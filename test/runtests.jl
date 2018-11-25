@@ -1,5 +1,5 @@
 using Interpolations, RegisterMismatch, RegisterPenalty, RegisterDeformation
-using Interpolations: sqr, SimpleRatio, BSplineInterpolation, DimSpec, Degree
+using RegisterMismatch: mismatch0, ratio
 import RegisterHindsight
 using DualNumbers, StaticArrays
 using TestImages
@@ -7,7 +7,7 @@ using Test
 
 #add jitter in sampling location, simulating inconsistencies in piezo position when using OCPI under certain conditions
 function jitter(img::Array{T,1}, npix::Float64) where T
-    etp = extrapolate(interpolate(img, BSpline(Linear()),OnGrid()), Flat())
+    etp = extrapolate(interpolate(img, BSpline(Linear())), Flat())
     out = zeros(eltype(img), size(img))
     z_def = Float64[]
     r = 0.0
@@ -15,7 +15,7 @@ function jitter(img::Array{T,1}, npix::Float64) where T
         # To ensure that our sampling satisfies the Nyquist criterion, smooth r
         r = (r + (rand()*2*npix)-npix)/2  # exponential filter
         push!(z_def, r)
-        out[i] = etp[i+r]
+        out[i] = etp(i+r)
     end
     return out, z_def
 end
@@ -26,7 +26,7 @@ function dualgrad_data!(g, ϕ, fixed, moving)
     ur = RegisterDeformation.convert_from_fixed(ϕ.u.itp.coefs)
     gr = RegisterDeformation.convert_from_fixed(g)
     nd = size(ur, 1)
-    for i in CartesianIndices(indices(ϕ.u.itp.coefs))
+    for i in CartesianIndices(axes(ϕ.u.itp.coefs))
         for j = 1:nd
             temp = ur[j, i]
             ur[j, i] = dual(DualNumbers.value(temp), 1.0)
@@ -40,7 +40,7 @@ function dualgrad_reg!(g, ap, ϕ)
     ur = RegisterDeformation.convert_from_fixed(ϕ.u.itp.coefs)
     gr = RegisterDeformation.convert_from_fixed(g)
     nd = size(ur, 1)
-    for i in CartesianIndices(indices(ϕ.u.itp.coefs))
+    for i in CartesianIndices(axes(ϕ.u.itp.coefs))
         for j = 1:nd
             temp = ur[j, i]
             ur[j, i] = dual(DualNumbers.value(temp), 1.0)
@@ -115,7 +115,7 @@ u0 = rand(1, gridsize...)./10
 test_hindsight(fixed, moving, ϕ0, ap)
 
 
-emoving = extrapolate(interpolate(moving, BSpline(Quadratic(Flat())), OnCell()), NaN)
+emoving = extrapolate(interpolate(moving, BSpline(Quadratic(Flat(OnCell())))), NaN)
 ϕ, p, p0 = Main.RegisterHindsight.optimize!(ϕ0, ap, fixed, emoving; stepsize=0.1)
 @test ratio(mismatch0(fixed, moving),1) > ratio(mismatch0(fixed, warp(moving, ϕ)), 1)
 
@@ -123,7 +123,7 @@ emoving = extrapolate(interpolate(moving, BSpline(Quadratic(Flat())), OnCell()),
 inds = (200:300, 200:300)
 img = map(Float64, testimage("cameraman"))
 fixed = img[inds...]
-moving = img[inds[1]-3,inds[2]-2]
+moving = img[inds[1].-3,inds[2].-2]
 gridsize = (3,3)
 knots = map(d->range(1, stop=size(fixed,d), length=gridsize[d]), (1:ndims(fixed)...,))
 ap = AffinePenalty{Float64,ndims(fixed)}(knots, λ)
@@ -132,7 +132,7 @@ u0 = zeros(2, gridsize...)
 test_hindsight(fixed, moving, ϕ0, ap)
 
 
-emoving = extrapolate(interpolate(moving, BSpline(Quadratic(Flat())), OnCell()), NaN)
+emoving = extrapolate(interpolate(moving, BSpline(Quadratic(Flat(OnCell())))), NaN)
 ϕ, p, p0 = Main.RegisterHindsight.optimize!(ϕ0, ap, fixed, emoving; stepsize=0.1)
 @test ratio(mismatch0(fixed, moving),1) > ratio(mismatch0(fixed, warp(moving, ϕ)), 1)
 for i in eachindex(ϕ.u)
