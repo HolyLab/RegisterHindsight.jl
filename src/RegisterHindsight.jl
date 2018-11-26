@@ -1,8 +1,7 @@
 module RegisterHindsight
 
 using Interpolations, RegisterDeformation, RegisterPenalty, ImageCore, StaticArrays, OffsetArrays
-using Base.Cartesian
-using Interpolations: sqr, SimpleRatio, BSplineInterpolation, DimSpec, Degree
+using Interpolations: tcollect, itpflag, value_weights, coefficients, indextuple, weights
 
 const InterpolatingDeformation{T,N,A<:ScaledInterpolation} = GridDeformation{T,N,A}
 
@@ -25,7 +24,7 @@ end
 function penalty_hindsight(ϕ1::InterpolatingDeformation,
                            ϕ2::InterpolatingDeformation,
                            ap::AffinePenalty{T}, fixed, moving) where T<:Real
-    indices(ϕ1.u) == indices(ϕ2.u) || throw(DimensionMismatch("The indices of the two deformations must match, got $(indices(U1)) and $(indices(U2))"))
+    axes(ϕ1.u) == axes(ϕ2.u) || throw(DimensionMismatch("The axes of the two deformations must match, got $(axes(U1)) and $(axes(U2))"))
     rp1, rp2 = penalty_hindsight_reg(ap, ϕ1), penalty_hindsight_reg(ap, ϕ2)
     dp1, dp2 = penalty_hindsight_data(ϕ1, ϕ2, fixed, moving)
     convert(T, rp1+dp1), convert(T, rp2+dp2)
@@ -44,168 +43,110 @@ function penalty_hindsight_reg!(g, ap, ϕ::InterpolatingDeformation)
     penalty!(g, ap, itp.coefs)
 end
 
-@generated function penalty_hindsight_data(ϕ::InterpolatingDeformation{T,N,A},
-                                           fixed::AbstractArray{T1,N},
-                                           moving::AbstractInterpolation{T2,N}) where {T,N,T1,T2,A}
-    IT = Interpolations.itptype(A)
-    uindexes = scaledindexes(IT, N)
-    ϕxindexes = [:(I[$d] + u[$d]) for d = 1:N]
-    out_type = promote_type(T1, T2, eltype(eltype(A)))
-    quote
-        knots = ϕ.knots
-        steps = map(step, knots)
-        offsets = map(first, knots)
-        valid = 0
-        mm = zero($(out_type))
-        for I in CartesianRange(indices(fixed))
-            fval = fixed[I]
-            if isfinite(fval)
-                u = ϕ.u.itp[$(uindexes...)]
-                mval = moving[$(ϕxindexes...)]
-                if isfinite(mval)
-                    valid += 1
-                    diff = $(out_type)(fval)-$(out_type)(mval)
-                    mm += diff^2
-                end
+function penalty_hindsight_data(ϕ::InterpolatingDeformation{T,N,A},
+                                fixed::AbstractArray{T1,N},
+                                moving::AbstractInterpolation{T2,N}) where {T,N,T1,T2,A}
+    # precomputing the weights makes the loop more efficient
+    coefs, windexes = prepare_value_axes(ϕ)
+    valid = 0
+    Tout = promote_type(T1, T2, eltype(eltype(A)))
+    mm = zero(Tout)
+    for (I, wI) in zip(CartesianIndices(fixed), Iterators.product(windexes...))
+        fval = fixed[I]
+        if isfinite(fval)
+            @inbounds offset = coefs[wI...]
+            mval = moving((Tuple(I) .+ Tuple(offset))...)
+            if isfinite(mval)
+                valid += 1
+                diff = Tout(fval)-Tout(mval)
+                mm += diff^2
             end
         end
-        mm/valid
     end
+    return mm/valid
 end
 
-# To compute the derivative with respect to the deformation, it's
-# efficient to re-use the coefficients computed for the shift. We do
-# that by exploiting the generated code in Interpolations.
+# This re-uses the work of computing the weights for both the value and the gradient
 function penalty_hindsight_data!(g,
                                  ϕ::InterpolatingDeformation{T,N},
                                  fixed::AbstractArray{T1,N},
                                  moving::AbstractInterpolation{T2,N}) where {T,N,T1,T2}
-    _penalty_hindsight_data!(g, ϕ.u.itp, ϕ.knots, fixed, moving)
-end
-
-@generated function _penalty_hindsight_data!(
-    g,
-    itp::BSplineInterpolation{T,N,TCoefs,IT,Axs},
-    knots,
-    fixed::AbstractArray{T1,N},
-    moving::AbstractInterpolation{T2,N}) where {T,N,TCoefs,IT,Axs,T1,T2}
-
-    penalty_hindsight_data!_gen(N, IT, Pad)
-end
-
-function penalty_hindsight_data!_gen(N, ::Type{IT}, Pad) where IT
-    uindexes = scaledindexes(IT, N)
-    xassign = Expr(:block, map((d,e)->Expr(:(=), Symbol("x_",d), e), 1:N, uindexes)...)
-    ϕxindexes = [:(I[$d] + y[$d]) for d = 1:N]
-
-    IR = interprange(IT, N)
-    IA = OffsetArray(collect(CartesianIndices(IR)), IR)
-    coef_exprs = [coef_gen(IT, 0, I) for I in IA]
-    g_exprs = [:(g[$(map(Interpolations.offsetsym, I.I, 1:N)...)] += coef*$(coef_exprs[I])) for I in CartesianIndices(IR)]
-    quote
-        fill!(g, zero(eltype(g)))
-        inds_itp = indices(itp)
-        steps = map(step, knots)
-        offsets = map(first, knots)
-        valid = 0
-        mm = 0.0
-        gimg = gradient(moving.itp, map(first, indices(moving))...)
-        GT = eltype(eltype(g))
-        for I in CartesianIndices(indices(fixed))
-            fval = fixed[I]
-            if isfinite(fval)
-                # This is effectively `y = ϕ.u.itp[$(uindexes...)]`,
-                # except that we have local variables for the coefficients we can access
-                $xassign
-                $(Interpolations.define_indices(IT, N, Pad))
-                $(Interpolations.coefficients(IT, N))
-                @inbounds y = $(Interpolations.index_gen(IT, N))
-                # End of `y = ϕ.u.itp[$(uindexes...)]`
-                mval = moving[$(ϕxindexes...)]
-                if isfinite(mval)
-                    valid += 1
-                    diff = float64(fval)-float64(mval)
-                    mm += abs2(diff)
-                    # For the elements of the gradient we use the
-                    # chain rule, and thus need the spatial gradient
-                    # of the image
-                    gradient!(gimg, moving.itp, $(ϕxindexes...))
-                    coef = (-2*diff)*SVector{$N,GT}(gimg)
-                    $(Expr(:block, g_exprs...))
+    coefs, windexes = prepare_value_axes(ϕ)
+    fill!(g, zero(eltype(g)))
+    valid = 0
+    mm = 0.0
+    for (I, wI) in zip(CartesianIndices(fixed), Iterators.product(windexes...))
+        fval = fixed[I]
+        if isfinite(fval)
+            @inbounds offset = coefs[wI...]
+            ϕxindexes = Tuple(I) .+ Tuple(offset)
+            mval = moving(ϕxindexes...)
+            if isfinite(mval)
+                valid += 1
+                diff = float64(fval)-float64(mval)
+                mm += abs2(diff)
+                # For the elements of the gradient we use the
+                # chain rule, and thus need the spatial gradient
+                # of the image
+                gimg = (-2*diff)*Interpolations.gradient(moving.itp, ϕxindexes...)
+                for (idx, w) in zip(Iterators.product(map(indextuple, wI)...), Iterators.product(map(weights, wI)...))
+                    g[idx...] += prod(w)*gimg
                 end
             end
         end
-        for i in eachindex(g)
-            g[i] /= valid
-        end
-        mm/valid
     end
+    for i in eachindex(g)
+        g[i] /= valid
+    end
+    return mm/valid
 end
 
-scaledindexes(::Type{IT}, N) where {IT} =
-    N == 1 ? (IT != NoInterp ? (:(Interpolations.coordlookup(knots[1], I[1])),) : (:(I[1]),)) :
-    map(d->Interpolations.iextract(IT, d) != NoInterp ? :(Interpolations.coordlookup(knots[$d], I[$d])) : :(I[$d]), 1:N)
+"""
+    coefs, wI = prepare_value_axes(ϕ::InterpolatingDeformation)
 
-interprange(::Type{IT}, N::Integer) where {IT} = _interprange((), IT, N)
-function _interprange(out, IT, N)
-    if length(out) < N
-        return _interprange((out..., interprange(Interpolations.iextract(IT, length(out)+1))), IT, N)
-    end
-    out
-end
-interprange(::Type{NoInterp}) = 0:0
-interprange(::Type{BSpline{Constant}}) = 0:0
-interprange(::Type{BSpline{Linear}}) = 0:1
-interprange(::Type{BSpline{Q}}) where {Q<:Quadratic} = -1:1
-interprange(::Type{BSpline{C}}) where {C<:Cubic} = -1:2
-
-coef_gen(::Type{IT}, d::Integer, offsets::CartesianIndex{N}) where {IT,N} =
-    coef_gen(Interpolations.iextract(IT, d+1), IT, d+1, offsets)
-
-function coef_gen(::Type{BSpline{D}}, ::Type{IT}, d::Integer, offsets::CartesianIndex{N}) where {D<:Degree,IT<:DimSpec{BSpline}, N}
-    if d <= N
-        sym = offsets[d] == -1 ? Symbol("cm_",d) :
-              offsets[d] ==  0 ? Symbol("c_",d) :
-              offsets[d] ==  1 ? Symbol("cp_",d) :
-              offsets[d] ==  2 ? Symbol("cpp_",d) : error("offset $(offsets[d]) unknown")
-        return :($sym * $(coef_gen(IT, d, offsets)))
-    else
-        return 1
-    end
+Return the coefficients and `Interpolations.WeightedIndex` values needed for evaluating
+`ϕ` at each position in the range grid. `coefs` is an array and `wI` a tuple, `wI[d]`
+corresponding to axis `d` of the range grid. In particular, at location `I = (I1, ..., In)`
+the value is `coefs[wI[1][I1], ..., wI[n][In]]`.
+"""
+function prepare_value_axes(ϕ::InterpolatingDeformation)
+    itp = ϕ.u.itp
+    itpflags = tcollect(itpflag, itp)
+    knots = ϕ.knots
+    newaxes = map(r->Base.Slice(round(Int, first(r)):round(Int, last(r))), knots)
+    wis = Interpolations.dimension_wis(value_weights, itpflags, axes(itp), newaxes, knots)
+    return coefficients(itp), wis
 end
 
-@generated function penalty_hindsight_data(ϕ1::InterpolatingDeformation{T,N},
-                                           ϕ2::InterpolatingDeformation{T,N},
-                                           fixed::AbstractArray{T1,N},
-                                           moving::AbstractInterpolation{T2,N}) where {T,N,T1,T2}
-    uindexes = [:((I[$d]-offsets[$d])/steps[$d] + 1) for d = 1:N]
-    ϕ1xindexes = [:(I[$d] + u1[$d]) for d = 1:N]
-    ϕ2xindexes = [:(I[$d] + u2[$d]) for d = 1:N]
-    quote
-        knots = ϕ1.knots
-        ϕ2.knots == knots || error("knots of ϕ1 and ϕ2 must be the same, got $knots and $(ϕ2.knots), respectively")
-        steps = map(step, knots)
-        offsets = map(first, knots)
-        valid = 0
-        mm1 = mm2 = 0.0
-        for I in CartesianRange(indices(fixed))
-            fval = fixed[I]
-            if isfinite(fval)
-                u1 = ϕ1.u[$(uindexes...)]
-                u2 = ϕ2.u[$(uindexes...)]
-                mval1 = moving[$(ϕ1xindexes...)]
-                mval2 = moving[$(ϕ2xindexes...)]
-                if isfinite(mval1) && isfinite(mval2)
-                    valid += 1
-                    diff = float64(fval)-float64(mval1)
-                    mm1 += diff^2
-                    diff = float64(fval)-float64(mval2)
-                    mm2 += diff^2
-                end
+# This implementation allows comparing ϕ1 and ϕ2 on equal footing, meaning using the same
+# voxels of the image data. A voxel gets included only if both ϕ1 and ϕ2 are in-bounds.
+# This cannot be guaranteed for the single-ϕ implementation of penalty_hindsight_data.
+function penalty_hindsight_data(ϕ1::InterpolatingDeformation{T,N},
+                                ϕ2::InterpolatingDeformation{T,N},
+                                fixed::AbstractArray{T1,N},
+                                moving::AbstractInterpolation{T2,N}) where {T,N,T1,T2}
+    coefs1, windexes1 = prepare_value_axes(ϕ1)
+    coefs2, windexes2 = prepare_value_axes(ϕ2)
+    knots = ϕ1.knots
+    ϕ2.knots == knots || error("knots of ϕ1 and ϕ2 must be the same, got $knots and $(ϕ2.knots), respectively")
+    valid = 0
+    mm1 = mm2 = 0.0
+    for (I, wI1, wI2) in zip(CartesianIndices(fixed), Iterators.product(windexes1...), Iterators.product(windexes2...))
+        fval = fixed[I]
+        if isfinite(fval)
+            offset1, offset2 = coefs1[wI1...], coefs2[wI2...]
+            mval1 = moving((Tuple(I) .+ Tuple(offset1))...)
+            mval2 = moving((Tuple(I) .+ Tuple(offset2))...)
+            if isfinite(mval1) && isfinite(mval2)
+                valid += 1
+                diff = float64(fval)-float64(mval1)
+                mm1 += diff^2
+                diff = float64(fval)-float64(mval2)
+                mm2 += diff^2
             end
         end
-        mm1/valid, mm2/valid
     end
+    return mm1/valid, mm2/valid
 end
 
 function optimize!(ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, moving::AbstractExtrapolation; stepsize = 1.0)
@@ -224,12 +165,12 @@ function optimize!(ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, 
             break
         end
         s = eltype(eltype(g))(stepsize/gmax)
-        copy!(ϕtrial.u.itp.coefs, ϕ.u.itp.coefs .- s .* g)
+        copyto!(ϕtrial.u.itp.coefs, ϕ.u.itp.coefs .- s .* g)
         p, pold = objective2(ϕtrial, ϕ)
         if p >= pold
             break
         end
-        copy!(ϕ.u.itp.coefs, ϕtrial.u.itp.coefs)
+        copyto!(ϕ.u.itp.coefs, ϕtrial.u.itp.coefs)
     end
     ϕ, pold, p0
 end
