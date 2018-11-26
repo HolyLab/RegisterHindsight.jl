@@ -1,8 +1,9 @@
+using TestImages
+@static((Sys.islinux() || Sys.iswindows()) && using ImageMagick)  # https://github.com/JuliaImages/ImageView.jl/pull/156#issuecomment-418200062
 using Interpolations, RegisterMismatch, RegisterPenalty, RegisterDeformation
 using RegisterMismatch: mismatch0, ratio
 import RegisterHindsight
 using DualNumbers, StaticArrays
-using TestImages
 using Test
 
 #add jitter in sampling location, simulating inconsistencies in piezo position when using OCPI under certain conditions
