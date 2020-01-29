@@ -1,7 +1,10 @@
 module RegisterHindsight
 
-using Interpolations, RegisterDeformation, RegisterPenalty, ImageCore, StaticArrays, OffsetArrays
+using ImageCore, StaticArrays, OffsetArrays, ProgressMeter
+using Interpolations, RegisterDeformation, RegisterPenalty
 using Interpolations: tcollect, itpflag, value_weights, coefficients, indextuple, weights
+
+export optimize!
 
 const InterpolatingDeformation{T,N,A<:ScaledInterpolation} = GridDeformation{T,N,A}
 
@@ -83,7 +86,7 @@ function penalty_hindsight_data!(g,
             mval = moving(ϕxindexes...)
             if isfinite(mval)
                 valid += 1
-                diff = float64(fval)-float64(mval)
+                diff = gray(float64(fval)-float64(mval))
                 mm += abs2(diff)
                 # For the elements of the gradient we use the
                 # chain rule, and thus need the spatial gradient
@@ -149,7 +152,18 @@ function penalty_hindsight_data(ϕ1::InterpolatingDeformation{T,N},
     return mm1/valid, mm2/valid
 end
 
-function optimize!(ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, moving::AbstractExtrapolation; stepsize = 1.0)
+"""
+    pnew, pold = optimize!(ϕ, dp, fixed, moving; stepsize=1, itermax=1000)
+
+Improve `ϕ` by minimizing the mean-square error between `fixed[x...]`
+and `moving(ϕ(x)...)`. `dp` is a deformation penalty, e.g.,
+an `AffinePenalty`. `stepsize` specifies the maximum update, in pixels, of
+elements of `ϕ`.
+
+The operation terminates when the step increases the value of the penalty,
+or when more than `itermax` iterations have occurred.
+"""
+function optimize!(ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, moving::AbstractExtrapolation; stepsize = 1.0, itermax=1000)
     # Optimize the interpolation coefficients, rather than the values
     # of the deformation at the grid points
     ϕtrial = deepcopy(ϕ)
@@ -158,7 +172,10 @@ function optimize!(ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, 
     objective2 = (ϕ1,ϕ2)->penalty_hindsight(ϕ1, ϕ2, dp, fixed, moving)
     ∇objective!(g, ϕ) = penalty_hindsight!(g, ϕ, dp, fixed, moving)
     pold = p0 = objective(ϕ)
-    while true
+    iter = 0
+    prog = ProgressUnknown("Performing descent:")
+    while iter < itermax
+        iter += 1
         ∇objective!(g, ϕ)
         gmax = mapreduce(v->maximum(abs, v), max, g)
         if gmax == 0 || !isfinite(gmax)
@@ -168,15 +185,28 @@ function optimize!(ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, 
         copyto!(ϕtrial.u.itp.coefs, ϕ.u.itp.coefs .- s .* g)
         p, pold = objective2(ϕtrial, ϕ)
         if p >= pold
+            ProgressMeter.finish!(prog)
             break
         end
         copyto!(ϕ.u.itp.coefs, ϕtrial.u.itp.coefs)
+        ProgressMeter.next!(prog; showvalues = [(:penalty,p)])
     end
-    ϕ, pold, p0
+    pold, p0
 end
 
-function optimize!(ϕ::GridDeformation, dp::DeformationPenalty, fixed, moving::AbstractExtrapolation; stepsize = 1.0)
-    optimize!(interpolate!(ϕ), dp, fixed, moving; stepsize=stepsize)
+# function optimize!(ϕ::GridDeformation, dp::DeformationPenalty, fixed, moving::AbstractExtrapolation; stepsize = 1.0)
+#     optimize!(interpolate!(ϕ), dp, fixed, moving; stepsize=stepsize)
+# end
+#
+function optimize!(ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, moving::AbstractInterpolation; stepsize = 1.0)
+    emoving = extrapolate(moving, NaN)
+    optimize!(ϕ, dp, fixed, emoving; stepsize=stepsize)
+end
+
+function optimize!(ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, moving::AbstractArray; stepsize = 1.0)
+    # imoving = interpolate(moving, BSpline(Quadratic(Flat(OnCell()))))
+    imoving = interpolate(moving, BSpline(Linear()))
+    optimize!(ϕ, dp, fixed, imoving; stepsize=stepsize)
 end
 
 end
