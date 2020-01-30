@@ -4,7 +4,7 @@ using ImageCore, StaticArrays, OffsetArrays, ProgressMeter
 using Interpolations, RegisterDeformation, RegisterPenalty
 using Interpolations: tcollect, itpflag, value_weights, coefficients, indextuple, weights
 
-export optimize!
+# optimize! is deliberately unexported because it conflicts with RegisterOptimize.optimize!
 
 const InterpolatingDeformation{T,N,A<:ScaledInterpolation} = GridDeformation{T,N,A}
 

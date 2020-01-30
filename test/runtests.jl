@@ -22,8 +22,8 @@ end
     uwrong = [0.0, 0, 0]
     ϕ = similarϕ(ϕiref, uwrong)
     ap = AffinePenalty(ϕ.nodes, 0.0)
-    _, p0 = optimize!(ϕ, ap, fixed, emoving; stepsize=0.1)
-    p, _  = optimize!(ϕ, ap, fixed, emoving; stepsize=0.01)
+    _, p0 = RegisterHindsight.optimize!(ϕ, ap, fixed, emoving; stepsize=0.1)
+    p, _  = RegisterHindsight.optimize!(ϕ, ap, fixed, emoving; stepsize=0.01)
     movw = warp(moving, ϕ)
     r0 = ratio(mismatch0(fixed, moving), 0)
     r  = ratio(mismatch0(fixed, movw), 0)
@@ -48,7 +48,7 @@ end
 
     emoving = extrapolate(interpolate(moving, BSpline(Quadratic(Flat(OnCell())))), NaN)
     ϕ = interpolate!(copy(ϕ0))      # *not* the same as `interpolate(ϕref)`
-    p, p0 = optimize!(ϕ, ap, fixed, emoving; stepsize=0.1)
+    p, p0 = RegisterHindsight.optimize!(ϕ, ap, fixed, emoving; stepsize=0.1)
     @test ratio(mismatch0(fixed, moving),1) > ratio(mismatch0(fixed, warp(moving, ϕ)), 1)
 end
 
@@ -69,7 +69,7 @@ end
 
     emoving = extrapolate(interpolate(moving, BSpline(Quadratic(Flat(OnCell())))), NaN)
     ϕ = interpolate!(copy(ϕ0))        # *not* the same as `interpolate(ϕref)`
-    p, p0 = Main.RegisterHindsight.optimize!(ϕ, ap, fixed, emoving; stepsize=0.1)
+    p, p0 = RegisterHindsight.optimize!(ϕ, ap, fixed, emoving; stepsize=0.1)
     @test ratio(mismatch0(fixed, moving),1) > ratio(mismatch0(fixed, warp(moving, ϕ)), 1)
     for i in eachindex(ϕ.u)
         u = ϕ.u[i]
