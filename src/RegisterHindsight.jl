@@ -192,10 +192,6 @@ function optimize!(ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, 
     pold, p0
 end
 
-# function optimize!(ϕ::GridDeformation, dp::DeformationPenalty, fixed, moving::AbstractExtrapolation; stepsize = 1.0)
-#     optimize!(interpolate!(ϕ), dp, fixed, moving; stepsize=stepsize)
-# end
-#
 function optimize!(ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, moving::AbstractInterpolation; stepsize = 1.0)
     emoving = extrapolate(moving, NaN)
     optimize!(ϕ, dp, fixed, emoving; stepsize=stepsize)
