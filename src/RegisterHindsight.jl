@@ -8,29 +8,27 @@ export optimize!
 
 const InterpolatingDeformation{T,N,A<:ScaledInterpolation} = GridDeformation{T,N,A}
 
-function penalty_hindsight(ϕ::InterpolatingDeformation, ap::AffinePenalty{T}, fixed, moving) where T<:Real
-    convert(T, penalty_hindsight_reg(ap, ϕ) +
-               penalty_hindsight_data(ϕ, fixed, moving))
+function penalty_hindsight(ϕ::InterpolatingDeformation, ap::AffinePenalty, fixed, moving)
+    return penalty_hindsight_reg(ap, ϕ) + penalty_hindsight_data(ϕ, fixed, moving)
 end
 
-function penalty_hindsight!(g, ϕ::InterpolatingDeformation, ap::AffinePenalty{T}, fixed, moving) where T<:Real
+function penalty_hindsight!(g, ϕ::InterpolatingDeformation, ap::AffinePenalty, fixed, moving)
     gd = similar(g)
-    ret = convert(T, penalty_hindsight_reg!(g, ap, ϕ) +
-                  penalty_hindsight_data!(gd, ϕ, fixed, moving))
+    ret = penalty_hindsight_reg!(g, ap, ϕ) + penalty_hindsight_data!(gd, ϕ, fixed, moving)
     for i in eachindex(g)
         g[i] += gd[i]
     end
-    ret
+    return ret
 end
 
 # For comparison of two deformations
 function penalty_hindsight(ϕ1::InterpolatingDeformation,
                            ϕ2::InterpolatingDeformation,
-                           ap::AffinePenalty{T}, fixed, moving) where T<:Real
+                           ap::AffinePenalty, fixed, moving)
     axes(ϕ1.u) == axes(ϕ2.u) || throw(DimensionMismatch("The axes of the two deformations must match, got $(axes(U1)) and $(axes(U2))"))
     rp1, rp2 = penalty_hindsight_reg(ap, ϕ1), penalty_hindsight_reg(ap, ϕ2)
     dp1, dp2 = penalty_hindsight_data(ϕ1, ϕ2, fixed, moving)
-    convert(T, rp1+dp1), convert(T, rp2+dp2)
+    rp1+dp1, rp2+dp2
 end
 
 function penalty_hindsight_reg(ap, ϕ::InterpolatingDeformation)
@@ -115,9 +113,9 @@ the value is `coefs[wI[1][I1], ..., wI[n][In]]`.
 function prepare_value_axes(ϕ::InterpolatingDeformation)
     itp = ϕ.u.itp
     itpflags = tcollect(itpflag, itp)
-    knots = ϕ.knots
-    newaxes = map(r->Base.Slice(round(Int, first(r)):round(Int, last(r))), knots)
-    wis = Interpolations.dimension_wis(value_weights, itpflags, axes(itp), newaxes, knots)
+    nodes = ϕ.nodes
+    newaxes = map(r->Base.Slice(round(Int, first(r)):round(Int, last(r))), nodes)
+    wis = Interpolations.dimension_wis(value_weights, itpflags, axes(itp), newaxes, nodes)
     return coefficients(itp), wis
 end
 
@@ -130,8 +128,8 @@ function penalty_hindsight_data(ϕ1::InterpolatingDeformation{T,N},
                                 moving::AbstractInterpolation{T2,N}) where {T,N,T1,T2}
     coefs1, windexes1 = prepare_value_axes(ϕ1)
     coefs2, windexes2 = prepare_value_axes(ϕ2)
-    knots = ϕ1.knots
-    ϕ2.knots == knots || error("knots of ϕ1 and ϕ2 must be the same, got $knots and $(ϕ2.knots), respectively")
+    nodes = ϕ1.nodes
+    ϕ2.nodes == nodes || error("nodes of ϕ1 and ϕ2 must be the same, got $nodes and $(ϕ2.nodes), respectively")
     valid = 0
     mm1 = mm2 = 0.0
     for (I, wI1, wI2) in zip(CartesianIndices(fixed), Iterators.product(windexes1...), Iterators.product(windexes2...))
@@ -194,10 +192,6 @@ function optimize!(ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, 
     pold, p0
 end
 
-# function optimize!(ϕ::GridDeformation, dp::DeformationPenalty, fixed, moving::AbstractExtrapolation; stepsize = 1.0)
-#     optimize!(interpolate!(ϕ), dp, fixed, moving; stepsize=stepsize)
-# end
-#
 function optimize!(ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, moving::AbstractInterpolation; stepsize = 1.0)
     emoving = extrapolate(moving, NaN)
     optimize!(ϕ, dp, fixed, emoving; stepsize=stepsize)
