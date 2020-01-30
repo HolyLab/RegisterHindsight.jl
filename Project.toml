@@ -1,20 +1,28 @@
 name = "RegisterHindsight"
 uuid = "73fda715-febb-5522-a0fc-086e91958f61"
 authors = ["Tim Holy <tim.holy@gmail.com>"]
-version = "0.1.0"
+version = "0.2.0"
 
 [deps]
 ImageCore = "a09fc81d-aa75-5fe9-8630-4744c3626534"
 Interpolations = "a98d9a8b-a2ab-59e6-89dd-64a1c18fca59"
 OffsetArrays = "6fe1bfb0-de20-5000-8ca7-80f57d26f881"
+ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
 RegisterDeformation = "c19381b7-cf49-59d7-881c-50dfbd227eaf"
 RegisterMismatch = "3c0dd727-6833-5f5d-a1e8-c0d421935c74"
 RegisterPenalty = "464fa2a9-b19c-5c59-8698-f58c971f971e"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [compat]
-DualNumbers = "≥0.6.1"
-Interpolations = "≥0.11.0"
+ImageCore = "0.8.1"
+Interpolations = "0.9, 0.10, 0.11, 0.12"
+OffsetArrays = "0.10, 0.11, 1"
+ProgressMeter = "0.7, 0.8, 0.9, 1"
+RegisterDeformation = "0.3"
+RegisterMismatch = "0.2, 0.3"
+RegisterPenalty = "0.1, 0.2"
+StaticArrays = "0.10, 0.11, 0.12"
+julia = "1.1"
 
 [extras]
 DualNumbers = "fa6b7ba4-c1ee-5f82-b5fc-ecf0adba8f74"
