@@ -8,29 +8,27 @@ export optimize!
 
 const InterpolatingDeformation{T,N,A<:ScaledInterpolation} = GridDeformation{T,N,A}
 
-function penalty_hindsight(ϕ::InterpolatingDeformation, ap::AffinePenalty{T}, fixed, moving) where T<:Real
-    convert(T, penalty_hindsight_reg(ap, ϕ) +
-               penalty_hindsight_data(ϕ, fixed, moving))
+function penalty_hindsight(ϕ::InterpolatingDeformation, ap::AffinePenalty, fixed, moving)
+    return penalty_hindsight_reg(ap, ϕ) + penalty_hindsight_data(ϕ, fixed, moving)
 end
 
-function penalty_hindsight!(g, ϕ::InterpolatingDeformation, ap::AffinePenalty{T}, fixed, moving) where T<:Real
+function penalty_hindsight!(g, ϕ::InterpolatingDeformation, ap::AffinePenalty, fixed, moving)
     gd = similar(g)
-    ret = convert(T, penalty_hindsight_reg!(g, ap, ϕ) +
-                  penalty_hindsight_data!(gd, ϕ, fixed, moving))
+    ret = penalty_hindsight_reg!(g, ap, ϕ) + penalty_hindsight_data!(gd, ϕ, fixed, moving)
     for i in eachindex(g)
         g[i] += gd[i]
     end
-    ret
+    return ret
 end
 
 # For comparison of two deformations
 function penalty_hindsight(ϕ1::InterpolatingDeformation,
                            ϕ2::InterpolatingDeformation,
-                           ap::AffinePenalty{T}, fixed, moving) where T<:Real
+                           ap::AffinePenalty, fixed, moving)
     axes(ϕ1.u) == axes(ϕ2.u) || throw(DimensionMismatch("The axes of the two deformations must match, got $(axes(U1)) and $(axes(U2))"))
     rp1, rp2 = penalty_hindsight_reg(ap, ϕ1), penalty_hindsight_reg(ap, ϕ2)
     dp1, dp2 = penalty_hindsight_data(ϕ1, ϕ2, fixed, moving)
-    convert(T, rp1+dp1), convert(T, rp2+dp2)
+    rp1+dp1, rp2+dp2
 end
 
 function penalty_hindsight_reg(ap, ϕ::InterpolatingDeformation)
