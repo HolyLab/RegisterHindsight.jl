@@ -115,9 +115,9 @@ the value is `coefs[wI[1][I1], ..., wI[n][In]]`.
 function prepare_value_axes(ϕ::InterpolatingDeformation)
     itp = ϕ.u.itp
     itpflags = tcollect(itpflag, itp)
-    knots = ϕ.knots
-    newaxes = map(r->Base.Slice(round(Int, first(r)):round(Int, last(r))), knots)
-    wis = Interpolations.dimension_wis(value_weights, itpflags, axes(itp), newaxes, knots)
+    nodes = ϕ.nodes
+    newaxes = map(r->Base.Slice(round(Int, first(r)):round(Int, last(r))), nodes)
+    wis = Interpolations.dimension_wis(value_weights, itpflags, axes(itp), newaxes, nodes)
     return coefficients(itp), wis
 end
 
@@ -130,8 +130,8 @@ function penalty_hindsight_data(ϕ1::InterpolatingDeformation{T,N},
                                 moving::AbstractInterpolation{T2,N}) where {T,N,T1,T2}
     coefs1, windexes1 = prepare_value_axes(ϕ1)
     coefs2, windexes2 = prepare_value_axes(ϕ2)
-    knots = ϕ1.knots
-    ϕ2.knots == knots || error("knots of ϕ1 and ϕ2 must be the same, got $knots and $(ϕ2.knots), respectively")
+    nodes = ϕ1.nodes
+    ϕ2.nodes == nodes || error("nodes of ϕ1 and ϕ2 must be the same, got $nodes and $(ϕ2.nodes), respectively")
     valid = 0
     mm1 = mm2 = 0.0
     for (I, wI1, wI2) in zip(CartesianIndices(fixed), Iterators.product(windexes1...), Iterators.product(windexes2...))

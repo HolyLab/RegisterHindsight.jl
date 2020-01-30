@@ -68,7 +68,7 @@ function test_hindsight(fixed, moving, ϕ0, ap)
     pdata2 = Main.RegisterHindsight.penalty_hindsight_data!(g_data, ϕ, fixed, emoving) #fully optimized version
     @test pdata1 == pdata2
 
-    ϕ0_dual = GridDeformation(map(dual, u0), ϕ.knots)
+    ϕ0_dual = GridDeformation(map(dual, u0), ϕ.nodes)
     ϕ_dual = interpolate!(ϕ0_dual)
     for i in eachindex(ϕ.u.itp.coefs)
         @test ϕ.u.itp.coefs[i] == real(ϕ_dual.u.itp.coefs[i])
@@ -104,15 +104,15 @@ moving, z_def = jitter(fixed, 0.45);
 
 λ = 1e-3
 gridsize = (length(fixed),)
-knots = map(d->range(1, stop=size(fixed,d), length=gridsize[d]), (1:ndims(fixed)...,))
-ap = AffinePenalty{Float64,ndims(fixed)}(knots, λ)
+nodes = map(d->range(1, stop=size(fixed,d), length=gridsize[d]), (1:ndims(fixed)...,))
+ap = AffinePenalty{Float64,ndims(fixed)}(nodes, λ)
 u0 = zeros(1, gridsize...)
-ϕ0 = GridDeformation(u0, knots)
+ϕ0 = GridDeformation(u0, nodes)
 
 test_hindsight(fixed, moving, ϕ0, ap)
 
 u0 = rand(1, gridsize...)./10
-ϕ0 = GridDeformation(u0, knots)
+ϕ0 = GridDeformation(u0, nodes)
 test_hindsight(fixed, moving, ϕ0, ap)
 
 
@@ -127,10 +127,10 @@ img = map(Float64, testimage("cameraman"))
 fixed = img[inds...]
 moving = img[inds[1].-3,inds[2].-2]
 gridsize = (3,3)
-knots = map(d->range(1, stop=size(fixed,d), length=gridsize[d]), (1:ndims(fixed)...,))
-ap = AffinePenalty{Float64,ndims(fixed)}(knots, λ)
+nodes = map(d->range(1, stop=size(fixed,d), length=gridsize[d]), (1:ndims(fixed)...,))
+ap = AffinePenalty{Float64,ndims(fixed)}(nodes, λ)
 u0 = zeros(2, gridsize...)
-ϕ0 = GridDeformation(u0, knots)
+ϕ0 = GridDeformation(u0, nodes)
 test_hindsight(fixed, moving, ϕ0, ap)
 
 
