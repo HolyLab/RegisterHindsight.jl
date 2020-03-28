@@ -42,7 +42,7 @@ end
 
     test_hindsight(fixed, moving, ϕ0, ap)
 
-    u0 = rand(1, gridsize...)./10
+    u0 = reshape([isodd(i) ? 0.05 : 0.1 for i = 1:gridsize[1]], 1, gridsize...)
     ϕ0 = GridDeformation(u0, nodes)
     test_hindsight(fixed, moving, ϕ0, ap)
 
@@ -50,6 +50,14 @@ end
     ϕ = interpolate!(copy(ϕ0))      # *not* the same as `interpolate(ϕref)`
     p, p0 = RegisterHindsight.optimize!(ϕ, ap, fixed, emoving; stepsize=0.1)
     @test ratio(mismatch0(fixed, moving),1) > ratio(mismatch0(fixed, warp(moving, ϕ)), 1)
+    @test p0 > 10p
+    ϕ = interpolate!(copy(ϕ0))      # *not* the same as `interpolate(ϕref)`
+    p, p0 = RegisterHindsight.optimize!(ϕ, ap, fixed, emoving; itermax=2)
+    @test p0 < 2p
+
+    ϕ = interpolate!(copy(ϕ0))      # *not* the same as `interpolate(ϕref)`
+    p, p0 = RegisterHindsight.optimize!(ϕ, ap, fixed, moving; itermax=2)
+    @test p0 < 2p
 end
 
 @testset "2-dimensional" begin
