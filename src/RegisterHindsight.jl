@@ -76,9 +76,13 @@ function penalty_hindsight_data!(g,
     fill!(g, zero(eltype(g)))
     valid = 0
     mm = 0.0
-    for (I, wI) in zip(CartesianIndices(fixed), Iterators.product(windexes...))
-        fval = fixed[I]
+    # The following is like
+    #   for (I, wI) in zip(, Iterators.product(windexes...))
+    # but a bit easier on inference & optimization
+    for I in CartesianIndices(fixed)
+        @inbounds fval = fixed[I]
         if isfinite(fval)
+            wI = map(getindex, windexes, Tuple(I))
             @inbounds offset = coefs[wI...]
             ϕxindexes = Tuple(I) .+ Tuple(offset)
             mval = moving(ϕxindexes...)
@@ -90,8 +94,14 @@ function penalty_hindsight_data!(g,
                 # chain rule, and thus need the spatial gradient
                 # of the image
                 gimg = (-2*diff)*Interpolations.gradient(moving.itp, ϕxindexes...)
-                for (idx, w) in zip(Iterators.product(map(indextuple, wI)...), Iterators.product(map(weights, wI)...))
-                    g[idx...] += prod(w)*gimg
+                # The following is like
+                #   for (idx, w) in zip(Iterators.product(map(indextuple, wI)...), Iterators.product(map(weights, wI)...))
+                # but a bit easier on inference & optimization
+                idxs, ws = map(indextuple, wI), map(weights, wI)
+                for J in CartesianIndices(map(length, idxs))
+                    idx = CartesianIndex(map(getindex, idxs, Tuple(J)))
+                    w = map(getindex, ws, Tuple(J))
+                    @inbounds g[idx] += prod(w)*gimg
                 end
             end
         end
@@ -132,9 +142,11 @@ function penalty_hindsight_data(ϕ1::InterpolatingDeformation{T,N},
     ϕ2.nodes == nodes || error("nodes of ϕ1 and ϕ2 must be the same, got $nodes and $(ϕ2.nodes), respectively")
     valid = 0
     mm1 = mm2 = 0.0
-    for (I, wI1, wI2) in zip(CartesianIndices(fixed), Iterators.product(windexes1...), Iterators.product(windexes2...))
-        fval = fixed[I]
+    for I in CartesianIndices(fixed)
+        @inbounds fval = fixed[I]
         if isfinite(fval)
+            wI1 = map(getindex, windexes1, Tuple(I))
+            wI2 = map(getindex, windexes2, Tuple(I))
             offset1, offset2 = coefs1[wI1...], coefs2[wI2...]
             mval1 = moving((Tuple(I) .+ Tuple(offset1))...)
             mval2 = moving((Tuple(I) .+ Tuple(offset2))...)
