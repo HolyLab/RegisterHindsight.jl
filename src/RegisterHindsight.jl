@@ -204,15 +204,15 @@ function optimize!(ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, 
     pold, p0
 end
 
-function optimize!(ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, moving::AbstractInterpolation; stepsize = 1.0)
+function optimize!(ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, moving::AbstractInterpolation; kwargs...)
     emoving = extrapolate(moving, NaN)
-    optimize!(ϕ, dp, fixed, emoving; stepsize=stepsize)
+    optimize!(ϕ, dp, fixed, emoving; kwargs...)
 end
 
-function optimize!(ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, moving::AbstractArray; stepsize = 1.0)
+function optimize!(ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, moving::AbstractArray; kwargs...)
     # imoving = interpolate(moving, BSpline(Quadratic(Flat(OnCell()))))
     imoving = interpolate(moving, BSpline(Linear()))
-    optimize!(ϕ, dp, fixed, imoving; stepsize=stepsize)
+    optimize!(ϕ, dp, fixed, imoving; kwargs...)
 end
 
 end
