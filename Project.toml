@@ -21,7 +21,7 @@ ProgressMeter = "0.7, 0.8, 0.9, 1"
 RegisterDeformation = "0.3.2"
 RegisterMismatch = "0.2, 0.3"
 RegisterPenalty = "0.1, 0.2"
-StaticArrays = "0.10, 0.11, 0.12"
+StaticArrays = "0.10, 0.11, 0.12, 1"
 julia = "1.1"
 
 [extras]
