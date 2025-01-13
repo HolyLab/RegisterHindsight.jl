@@ -22,7 +22,7 @@ RegisterDeformation = "0.3.2, 0.4"
 RegisterMismatch = "0.2, 0.3, 0.4"
 RegisterPenalty = "0.1, 0.2, 0.3"
 StaticArrays = "0.10, 0.11, 0.12, 1"
-julia = "1.1"
+julia = "1.6"
 
 [extras]
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
