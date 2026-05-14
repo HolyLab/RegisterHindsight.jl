@@ -1,0 +1,86 @@
+---
+  Phase 4 — Design Review Report: RegisterHindsight
+
+  Likely design issues
+
+  1. Nothing is exported.
+  The entire package surface is accessed via qualified names (RegisterHindsight.optimize!, etc.). In the Julia ecosystem this is very unusual — even packages that want to avoid
+  namespace pollution typically export their primary entry point. If intentional, it should be stated explicitly (e.g., in the README or a public declaration). If accidental,
+  optimize! and InterpolatingDeformation are the clear candidates to export.
+
+  2. InterpolatingDeformation is a type alias, not a first-class type.
+  It is defined as const InterpolatingDeformation{T,N,A} = GridDeformation{T,N,A} where A<:ScaledInterpolation. Consequences:
+  - There is no InterpolatingDeformation(...) constructor — users must know to build a GridDeformation whose displacement array happens to be a ScaledInterpolation.
+  - The alias communicates a constraint at dispatch sites but provides no construction guidance.
+  - Users reading optimize!(ϕ::InterpolatingDeformation, ...) have no ergonomic path to creating a valid ϕ.
+
+  3. optimize! returns a plain (p_final, p_initial) tuple.
+  The two values are easy to confuse (which is "final"?). A named tuple (; final=..., initial=...) would be less error-prone with zero cost.
+
+  ---
+  Design questions
+
+  Q1. Should penalty_hindsight_reg, penalty_hindsight_data, and their mutating variants be part of the public API?
+  They are accessible (not private) and some have docstrings, but none are exported. If they're only ever used internally by optimize!, making them truly private simplifies the API.
+  - Users reading optimize!(ϕ::InterpolatingDeformation, ...) have no ergonomic path to creating a valid ϕ.
+
+  3. optimize! returns a plain (p_final, p_initial) tuple.
+  The two values are easy to confuse (which is "final"?). A named tuple (; final=..., initial=...) would be less error-prone with zero cost.
+
+  ---
+  ---
+  Design questions
+
+  Q1. Should penalty_hindsight_reg, penalty_hindsight_data, and their mutating variants be part of the public API?
+  They are accessible (not private) and some have docstrings, but none are exported. If they're only ever used internally by optimize!, making them truly private simplifies the API.
+  If users are expected to compose them (e.g., to define a custom optimizer), they should be exported with documentation. Right now they occupy an ambiguous middle ground.
+
+  Q2. The two-ϕ overloads of penalty_hindsight and penalty_hindsight_data restrict evaluation to the voxel intersection of both deformations for a fair comparison. This logic is used
+  inside optimize!. Was the intent to expose this for users who want to compare two candidate deformations directly? If not, these feel like implementation details that leaked into
+  the accessible namespace.
+
+  Q3. Is prepare_value_axes intended for users who want to write a custom optimizer?
+  It has a docstring and is accessible. If it's truly an internal helper, the docstring is misleading. If it's meant as an "advanced escape hatch," it should be exported (or at
+  minimum public) with documentation explaining its role.
+
+  Q4. optimize! has no convergence signal.
+  It terminates either when a step fails to decrease the penalty or when itermax is reached. The return value (p_final, p_initial) does not distinguish "converged" from "hit the
+  iteration limit." Is this acceptable for the target use case, or would users benefit from knowing whether the optimizer converged?
+
+  Q5. No progress/callback API.
+  For iterative gradient descent, users often want to monitor convergence or hook in custom stopping criteria. Is the absence of a callback intentional (keep it simple), or would it
+  be useful?
+
+  ---
+  Observations
+
+  - The three-method dispatch cascade in optimize! (wrapping AbstractArray → AbstractInterpolation → AbstractExtrapolation) is a nice usability touch — users don't have to manually
+  wrap images.
+  - The two-ϕ voxel-intersection logic is subtle but correct: comparing penalties on the same valid-voxel set prevents bias from differing out-of-bounds masks. Worth a comment if it
+  stays internal.
+  - ProgressMeter is listed as a dependency; it's not visible in the conceptual map. Either it's used inside optimize! (and worth noting in the API docs) or it may be an unused
+  dependency.
+
+  ---
+  Overall characterization
+
+  RegisterHindsight is tightly scoped and conceptually clear: one optimizer, one loss function, one type constraint. The algorithm design is sound. The main tension is between being a
+   thin, batteries-included refinement pass (export optimize!, hide the sub-penalty functions) and being a composable low-level toolkit (expose sub-penalties, prepare_value_axes,
+  etc.). Currently it occupies an ambiguous middle ground — nothing is exported, but internals are documented as if public. The two highest-leverage changes would be: (1) settle what
+  is public and export/annotate it, and (2) provide a constructor path for InterpolatingDeformation so users can actually create a valid input to optimize!.
+
+  ---
+  Phase 5 — Values clarification
+
+  Before I write a plan, I'd like your answers to a few questions to resolve the intentional/accidental ambiguity:
+
+  1. Scope and audience: Is this package intended as a standalone tool that new users in the Register* ecosystem would use directly, or is it more of an implementation module consumed
+   by a higher-level package (e.g., Register.jl)? This determines whether the "nothing exported" design is a bug or a feature.
+  2. Central abstraction: Should InterpolatingDeformation remain a type alias (a dispatch-filtering constraint), or should it become a first-class wrapper type with its own
+  constructor? The alias is lighter weight; a new type would allow a proper constructor and clearer error messages.
+  3. Sub-penalty functions: Should penalty_hindsight_reg, penalty_hindsight_data, etc. be treated as public (exported/public), or collapsed into private implementation details? Is
+  there a real use case for calling them outside of optimize!?
+  4. Error and failure model: The current design uses NaN-sentinel voxels (skip out-of-bounds pixels silently). Is that the intended philosophy throughout, or would you want
+  validation/throws in some cases?
+  5. Release strategy: The "export things" and "constructor for InterpolatingDeformation" changes could be non-breaking (adding exports is always non-breaking). Are there any changes
+  you're anticipating that would be breaking?
