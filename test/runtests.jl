@@ -5,6 +5,7 @@ using RegisterMismatch: mismatch0
 using RegisterCore: ratio
 using RegisterHindsight
 using ForwardDiff, StaticArrays
+using Random
 using Test
 
 if !isdefined(@__MODULE__, :test_hindsight)
@@ -33,6 +34,7 @@ end
     @test p < 0.01 * p0
 
 
+    Random.seed!(1)
     moving, z_def = jitter(fixed, 0.45)
     λ = 1.0e-3
     gridsize = (length(fixed),)
