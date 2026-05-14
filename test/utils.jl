@@ -36,12 +36,12 @@ function test_hindsight(fixed, moving, ϕ0, ap)
     end
     function penaltyreg(newcoefs)
         ϕnew = similarϕ(ϕ, newcoefs)
-        return RegisterHindsight.penalty_hindsight_reg(ap, ϕ)
+        return RegisterHindsight.penalty_hindsight_reg(ϕnew, ap)
     end
 
     # Check penalty value consistency for low-level calls
     pdata1 = RegisterHindsight.penalty_hindsight_data(ϕ, fixed, emoving)
-    preg1 = RegisterHindsight.penalty_hindsight_reg(ap, ϕ)
+    preg1 = RegisterHindsight.penalty_hindsight_reg(ϕ, ap)
     ptotal = RegisterHindsight.penalty_hindsight(ϕ, ap, fixed, emoving)
     @test ptotal == pdata1 + preg1
     pdata2 = RegisterHindsight.penalty_hindsight_data!(g_data, ϕ, fixed, emoving) #fully optimized version
@@ -53,6 +53,6 @@ function test_hindsight(fixed, moving, ϕ0, ap)
     #test that gradients sum properly
     g_total, g_reg = similar(g_data), similar(g_data)
     RegisterHindsight.penalty_hindsight!(g_total, ϕ, ap, fixed, emoving)
-    RegisterHindsight.penalty_hindsight_reg!(g_reg, ap, ϕ)
+    RegisterHindsight.penalty_hindsight_reg!(g_reg, ϕ, ap)
     @test g_total == g_data .+ g_reg
 end

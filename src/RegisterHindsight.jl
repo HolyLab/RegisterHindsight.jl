@@ -8,13 +8,27 @@ using Interpolations: tcollect, itpflag, value_weights, coefficients, indextuple
 
 const InterpolatingDeformation{T,N,A<:ScaledInterpolation} = GridDeformation{T,N,A}
 
-function penalty_hindsight(ϕ::InterpolatingDeformation, ap::AffinePenalty, fixed, moving)
-    return penalty_hindsight_reg(ap, ϕ) + penalty_hindsight_data(ϕ, fixed, moving)
+# Interpolations v0.15 no longer accepts WeightedArbIndex as a direct array index.
+# Compute the weighted sum over interpolation coefficients manually.
+function _coefs_at(coefs, wI)
+    idxs = map(indextuple, wI)
+    ws   = map(weights,    wI)
+    result = zero(eltype(coefs))
+    for J in CartesianIndices(map(length, idxs))
+        idx = CartesianIndex(map(getindex, idxs, Tuple(J)))
+        w   = prod(map(getindex, ws, Tuple(J)))
+        @inbounds result += w * coefs[idx]
+    end
+    return result
 end
 
-function penalty_hindsight!(g, ϕ::InterpolatingDeformation, ap::AffinePenalty, fixed, moving)
+function penalty_hindsight(ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, moving)
+    return penalty_hindsight_reg(ϕ, dp) + penalty_hindsight_data(ϕ, fixed, moving)
+end
+
+function penalty_hindsight!(g, ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, moving)
     gd = similar(g)
-    ret = penalty_hindsight_reg!(g, ap, ϕ) + penalty_hindsight_data!(gd, ϕ, fixed, moving)
+    ret = penalty_hindsight_reg!(g, ϕ, dp) + penalty_hindsight_data!(gd, ϕ, fixed, moving)
     for i in eachindex(g)
         g[i] += gd[i]
     end
@@ -24,24 +38,24 @@ end
 # For comparison of two deformations
 function penalty_hindsight(ϕ1::InterpolatingDeformation,
                            ϕ2::InterpolatingDeformation,
-                           ap::AffinePenalty, fixed, moving)
-    axes(ϕ1.u) == axes(ϕ2.u) || throw(DimensionMismatch("The axes of the two deformations must match, got $(axes(U1)) and $(axes(U2))"))
-    rp1, rp2 = penalty_hindsight_reg(ap, ϕ1), penalty_hindsight_reg(ap, ϕ2)
+                           dp::DeformationPenalty, fixed, moving)
+    axes(ϕ1.u) == axes(ϕ2.u) || throw(DimensionMismatch("The axes of the two deformations must match, got $(axes(ϕ1.u)) and $(axes(ϕ2.u))"))
+    rp1, rp2 = penalty_hindsight_reg(ϕ1, dp), penalty_hindsight_reg(ϕ2, dp)
     dp1, dp2 = penalty_hindsight_data(ϕ1, ϕ2, fixed, moving)
     rp1+dp1, rp2+dp2
 end
 
-function penalty_hindsight_reg(ap, ϕ::InterpolatingDeformation)
-    penalty_hindsight_reg!(nothing, ap, ϕ)
+function penalty_hindsight_reg(ϕ::InterpolatingDeformation, dp)
+    penalty_hindsight_reg!(nothing, ϕ, dp)
 end
 
-function penalty_hindsight_reg!(g, ap, ϕ::InterpolatingDeformation)
+function penalty_hindsight_reg!(g, ϕ::InterpolatingDeformation, dp)
     # The regularization penalty. We apply this to the interpolation
     # coefficients rather than the on-grid values. This may be
     # cheating. It also requires InPlace() so that the sizes match.
     itp = ϕ.u.itp
     axes(itp.coefs) == itp.parentaxes || error("deformation cannot have padding (use `InPlace` boundary conditions)")
-    penalty!(g, ap, itp.coefs)
+    penalty!(g, dp, itp.coefs)
 end
 
 function penalty_hindsight_data(ϕ::InterpolatingDeformation{T,N,A},
@@ -55,7 +69,7 @@ function penalty_hindsight_data(ϕ::InterpolatingDeformation{T,N,A},
     for (I, wI) in zip(CartesianIndices(fixed), Iterators.product(windexes...))
         fval = fixed[I]
         if isfinite(fval)
-            @inbounds offset = coefs[wI...]
+            offset = _coefs_at(coefs, wI)
             mval = moving((Tuple(I) .+ Tuple(offset))...)
             if isfinite(mval)
                 valid += 1
@@ -83,7 +97,7 @@ function penalty_hindsight_data!(g,
         @inbounds fval = fixed[I]
         if isfinite(fval)
             wI = map(getindex, windexes, Tuple(I))
-            @inbounds offset = coefs[wI...]
+            offset = _coefs_at(coefs, wI)
             ϕxindexes = Tuple(I) .+ Tuple(offset)
             mval = moving(ϕxindexes...)
             if isfinite(mval)
@@ -147,7 +161,7 @@ function penalty_hindsight_data(ϕ1::InterpolatingDeformation{T,N},
         if isfinite(fval)
             wI1 = map(getindex, windexes1, Tuple(I))
             wI2 = map(getindex, windexes2, Tuple(I))
-            offset1, offset2 = coefs1[wI1...], coefs2[wI2...]
+            offset1, offset2 = _coefs_at(coefs1, wI1), _coefs_at(coefs2, wI2)
             mval1 = moving((Tuple(I) .+ Tuple(offset1))...)
             mval2 = moving((Tuple(I) .+ Tuple(offset2))...)
             if isfinite(mval1) && isfinite(mval2)
@@ -163,7 +177,7 @@ function penalty_hindsight_data(ϕ1::InterpolatingDeformation{T,N},
 end
 
 """
-    pnew, pold = optimize!(ϕ, dp, fixed, moving; stepsize=1, itermax=1000)
+    result = optimize!(ϕ, dp, fixed, moving; stepsize=1, itermax=1000)
 
 Improve `ϕ` by minimizing the mean-square error between `fixed[x...]`
 and `moving(ϕ(x)...)`. `dp` is a deformation penalty, e.g.,
@@ -172,6 +186,9 @@ elements of `ϕ`.
 
 The operation terminates when the step increases the value of the penalty,
 or when more than `itermax` iterations have occurred.
+
+Returns a named tuple `(; final, initial)` with the penalty after optimization
+and the penalty before optimization. Tuple destructuring `final, initial = optimize!(...)` also works.
 """
 function optimize!(ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, moving::AbstractExtrapolation; stepsize = 1.0, itermax=1000)
     # Optimize the interpolation coefficients, rather than the values
@@ -201,7 +218,7 @@ function optimize!(ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, 
         copyto!(ϕ.u.itp.coefs, ϕtrial.u.itp.coefs)
         ProgressMeter.next!(prog; showvalues = [(:penalty,p)])
     end
-    pold, p0
+    (; final=pold, initial=p0)
 end
 
 function optimize!(ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, moving::AbstractInterpolation; kwargs...)
