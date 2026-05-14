@@ -1,7 +1,7 @@
 # add jitter in sampling location, simulating inconsistencies in piezo position when using
 # OCPI under certain conditions
 
-RegisterDeformation.floattype(::Type{ForwardDiff.Dual{Tag,V,N}}) where {Tag,V,N} =
+RegisterDeformation.floattype(::Type{ForwardDiff.Dual{Tag, V, N}}) where {Tag, V, N} =
     RegisterDeformation.floattype(V)
 
 function jitter(img::AbstractVector, npix::Real)
@@ -12,10 +12,10 @@ function jitter(img::AbstractVector, npix::Real)
     for i in eachindex(img)
         # To ensure that our sampling approximately satisfies the Nyquist
         # criterion, smooth r
-        Δz = (2*rand()-1)*npix
-        r = (3r + Δz)/4  # exponential filter with τ ≈ 4
+        Δz = (2 * rand() - 1) * npix
+        r = (3r + Δz) / 4  # exponential filter with τ ≈ 4
         push!(z_def, r)
-        out[i] = etp(i+r)
+        out[i] = etp(i + r)
     end
     return out, z_def
 end
@@ -54,5 +54,5 @@ function test_hindsight(fixed, moving, ϕ0, ap)
     g_total, g_reg = similar(g_data), similar(g_data)
     RegisterHindsight.penalty_hindsight!(g_total, ϕ, ap, fixed, emoving)
     RegisterHindsight.penalty_hindsight_reg!(g_reg, ϕ, ap)
-    @test g_total == g_data .+ g_reg
+    return @test g_total == g_data .+ g_reg
 end
