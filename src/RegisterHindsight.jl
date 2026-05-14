@@ -376,7 +376,7 @@ function optimize!(ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, 
     ∇objective!(g, ϕ) = penalty_hindsight!(g, ϕ, dp, fixed, moving)
     pold = p0 = objective(ϕ)
     iter = 0
-    prog = ProgressUnknown("Performing descent:")
+    prog = ProgressUnknown(; desc="Performing descent:")
     while iter < itermax
         iter += 1
         ∇objective!(g, ϕ)
