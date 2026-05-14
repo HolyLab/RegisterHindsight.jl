@@ -21,10 +21,11 @@ end
 @testset "ExplicitImports" begin
     # Interpolations internals (tcollect, itpflag, etc.) and Base.Slice / Interpolations.dimension_wis
     # are intentional non-public accesses required by the WeightedArbIndex workaround.
+    # gradient is not public in Interpolations v0.16+ but has no public replacement.
     ExplicitImports.test_explicit_imports(
         RegisterHindsight;
         ignore = (:tcollect, :itpflag, :value_weights, :coefficients, :indextuple,
-            :weights, :Slice, :dimension_wis),
+            :weights, :Slice, :dimension_wis, :gradient),
     )
 end
 
