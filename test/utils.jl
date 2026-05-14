@@ -31,11 +31,11 @@ function test_hindsight(fixed, moving, ϕ0, ap)
 
     # Setup for ForwardDiff, which only works on vectors of parameters
     function penaltydata(newcoefs)
-        ϕnew = similarϕ(ϕ, newcoefs)
+        ϕnew = similar_deformation(ϕ, newcoefs)
         return RegisterHindsight.penalty_hindsight_data(ϕnew, fixed, emoving)
     end
     function penaltyreg(newcoefs)
-        ϕnew = similarϕ(ϕ, newcoefs)
+        ϕnew = similar_deformation(ϕ, newcoefs)
         return RegisterHindsight.penalty_hindsight_reg(ϕnew, ap)
     end
 

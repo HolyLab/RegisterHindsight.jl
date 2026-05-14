@@ -1,7 +1,8 @@
 using TestImages
 @static((Sys.islinux() || Sys.iswindows()) && using ImageMagick)  # https://github.com/JuliaImages/ImageView.jl/pull/156#issuecomment-418200062
 using Interpolations, RegisterMismatch, RegisterPenalty, RegisterDeformation
-using RegisterMismatch: mismatch0, ratio
+using RegisterMismatch: mismatch0
+using RegisterCore: ratio
 using RegisterHindsight
 using ForwardDiff, StaticArrays
 using Test
@@ -20,7 +21,7 @@ end
     emoving = extrapolate(interpolate(moving, BSpline(Quadratic(Flat(OnCell())))), NaN)
 
     uwrong = [0.0, 0, 0]
-    ϕ = similarϕ(ϕiref, uwrong)
+    ϕ = similar_deformation(ϕiref, uwrong)
     ap = AffinePenalty(ϕ.nodes, 0.0)
     _, p0 = RegisterHindsight.optimize!(ϕ, ap, fixed, emoving; stepsize = 0.1)
     p, _ = RegisterHindsight.optimize!(ϕ, ap, fixed, emoving; stepsize = 0.01)
