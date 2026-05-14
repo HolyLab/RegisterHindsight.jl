@@ -1,6 +1,6 @@
 name = "RegisterHindsight"
 uuid = "73fda715-febb-5522-a0fc-086e91958f61"
-version = "0.3.0"
+version = "1.0.0"
 authors = ["Tim Holy <tim.holy@gmail.com>"]
 
 [deps]
