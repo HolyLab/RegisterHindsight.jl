@@ -1,4 +1,5 @@
 using Aqua
+using ExplicitImports
 using TestImages
 @static((Sys.islinux() || Sys.iswindows()) && using ImageMagick)  # https://github.com/JuliaImages/ImageView.jl/pull/156#issuecomment-418200062
 using Interpolations, RegisterMismatch, RegisterPenalty, RegisterDeformation
@@ -15,6 +16,16 @@ end
 
 @testset "Aqua" begin
     Aqua.test_all(RegisterHindsight)
+end
+
+@testset "ExplicitImports" begin
+    # Interpolations internals (tcollect, itpflag, etc.) and Base.Slice / Interpolations.dimension_wis
+    # are intentional non-public accesses required by the WeightedArbIndex workaround.
+    ExplicitImports.test_explicit_imports(
+        RegisterHindsight;
+        ignore = (:tcollect, :itpflag, :value_weights, :coefficients, :indextuple,
+            :weights, :Slice, :dimension_wis),
+    )
 end
 
 @testset "1-dimensional" begin
