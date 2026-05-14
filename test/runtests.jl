@@ -1,3 +1,4 @@
+using Aqua
 using TestImages
 @static((Sys.islinux() || Sys.iswindows()) && using ImageMagick)  # https://github.com/JuliaImages/ImageView.jl/pull/156#issuecomment-418200062
 using Interpolations, RegisterMismatch, RegisterPenalty, RegisterDeformation
@@ -10,6 +11,10 @@ using Test
 
 if !isdefined(@__MODULE__, :test_hindsight)
     include("utils.jl")
+end
+
+@testset "Aqua" begin
+    Aqua.test_all(RegisterHindsight)
 end
 
 @testset "1-dimensional" begin
