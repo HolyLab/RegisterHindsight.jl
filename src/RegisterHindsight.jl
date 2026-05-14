@@ -1,3 +1,23 @@
+"""
+    RegisterHindsight
+
+Hindsight-based image registration refinement.
+
+This module provides a gradient-descent optimizer that refines a deformation
+field `ϕ` by minimizing the mean-square intensity error between a `fixed` image
+and a warped `moving` image, subject to a deformation penalty.
+
+The primary entry point is [`optimize!`](@ref RegisterHindsight.optimize!). The
+lower-level penalty functions (`penalty_hindsight`, `penalty_hindsight_data`,
+`penalty_hindsight_reg`, and their in-place gradient variants) are also
+accessible as `RegisterHindsight.penalty_hindsight` etc.
+
+The deformation `ϕ` must be an [`InterpolatingDeformation`](@ref), i.e., a
+`GridDeformation` whose displacement field is backed by a `ScaledInterpolation`
+with `InPlace` boundary conditions. Construct one with `interpolate!(copy(ϕ0))`
+from a plain `GridDeformation` `ϕ0` (note: `interpolate(ϕ0)` produces a
+different, incompatible type).
+"""
 module RegisterHindsight
 
 using ImageCore: ImageCore, float64, gray
@@ -14,6 +34,24 @@ using RegisterPenalty: RegisterPenalty, DeformationPenalty, penalty!
 
 # optimize! is deliberately unexported because it conflicts with RegisterOptimize.optimize!
 
+"""
+    InterpolatingDeformation{T, N, A <: ScaledInterpolation}
+
+Type alias for a `GridDeformation` whose displacement field is backed by a
+`ScaledInterpolation`. All functions in this module operate on deformations of
+this type.
+
+Construct one with `interpolate!(copy(ϕ0))` from a plain `GridDeformation`
+`ϕ0`. Note that `interpolate(ϕ0)` (without `!`) produces a different,
+incompatible type.
+
+!!! note
+    The regularization penalty (`penalty_hindsight_reg!`) applies to the
+    interpolation coefficient array and therefore requires `InPlace` boundary
+    conditions so that the coefficient array has no padding. If the deformation
+    was not constructed with `InPlace` boundary conditions, a runtime error is
+    thrown.
+"""
 const InterpolatingDeformation{T, N, A <: ScaledInterpolation} = GridDeformation{T, N, A}
 
 # Interpolations v0.15 no longer accepts WeightedArbIndex as a direct array index.
@@ -30,10 +68,32 @@ function _coefs_at(coefs, wI)
     return result
 end
 
+"""
+    penalty_hindsight(ϕ, dp, fixed, moving) → scalar
+
+Return the total hindsight penalty for deformation `ϕ`: the sum of the data
+penalty (mean-square intensity error) and the regularization penalty from `dp`.
+
+`moving` must be an `AbstractInterpolation`.
+
+See also [`penalty_hindsight_data`](@ref RegisterHindsight.penalty_hindsight_data),
+[`penalty_hindsight_reg`](@ref RegisterHindsight.penalty_hindsight_reg),
+[`penalty_hindsight!`](@ref RegisterHindsight.penalty_hindsight!).
+"""
 function penalty_hindsight(ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, moving)
     return penalty_hindsight_reg(ϕ, dp) + penalty_hindsight_data(ϕ, fixed, moving)
 end
 
+"""
+    penalty_hindsight!(g, ϕ, dp, fixed, moving) → scalar
+
+Compute the total hindsight penalty for `ϕ` and write its gradient to `g`.
+Returns the same scalar value as
+[`penalty_hindsight`](@ref RegisterHindsight.penalty_hindsight)`(ϕ, dp, fixed, moving)`.
+
+`g` must be allocated as `similar(ϕ.u.itp.coefs)` and is written in-place
+(replacing any previous contents).
+"""
 function penalty_hindsight!(g, ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, moving)
     gd = similar(g)
     ret = penalty_hindsight_reg!(g, ϕ, dp) + penalty_hindsight_data!(gd, ϕ, fixed, moving)
@@ -43,7 +103,16 @@ function penalty_hindsight!(g, ϕ::InterpolatingDeformation, dp::DeformationPena
     return ret
 end
 
-# For comparison of two deformations
+"""
+    penalty_hindsight(ϕ1, ϕ2, dp, fixed, moving) → (scalar, scalar)
+
+Return the total hindsight penalties for two deformations `ϕ1` and `ϕ2` as a
+tuple `(p1, p2)`, evaluated on the same set of voxels. A voxel contributes to
+both penalties only if both `ϕ1(x)` and `ϕ2(x)` map to in-bounds (finite)
+positions in `moving`, ensuring the two values are directly comparable.
+
+`ϕ1` and `ϕ2` must have the same `axes` and `nodes`.
+"""
 function penalty_hindsight(
         ϕ1::InterpolatingDeformation,
         ϕ2::InterpolatingDeformation,
@@ -55,10 +124,33 @@ function penalty_hindsight(
     return rp1 + dp1, rp2 + dp2
 end
 
+"""
+    penalty_hindsight_reg(ϕ, dp) → scalar
+
+Return the regularization component of the hindsight penalty for deformation
+`ϕ`, computed by `RegisterPenalty.penalty!` applied to the interpolation
+coefficient array of `ϕ`.
+
+!!! note
+    Requires `InPlace` boundary conditions. See [`InterpolatingDeformation`](@ref).
+"""
 function penalty_hindsight_reg(ϕ::InterpolatingDeformation, dp)
     return penalty_hindsight_reg!(nothing, ϕ, dp)
 end
 
+"""
+    penalty_hindsight_reg!(g, ϕ, dp) → scalar
+
+Compute the regularization penalty for `ϕ` and write its gradient to `g`.
+Returns the same scalar value as
+[`penalty_hindsight_reg`](@ref RegisterHindsight.penalty_hindsight_reg)`(ϕ, dp)`.
+
+`g` must be `nothing` (to skip gradient computation) or allocated as
+`similar(ϕ.u.itp.coefs)` and is written in-place.
+
+Throws an error if the deformation does not use `InPlace` boundary conditions
+(i.e., if `axes(ϕ.u.itp.coefs) ≠ ϕ.u.itp.parentaxes`).
+"""
 function penalty_hindsight_reg!(g, ϕ::InterpolatingDeformation, dp)
     # The regularization penalty. We apply this to the interpolation
     # coefficients rather than the on-grid values. This may be
@@ -68,6 +160,16 @@ function penalty_hindsight_reg!(g, ϕ::InterpolatingDeformation, dp)
     return penalty!(g, dp, itp.coefs)
 end
 
+"""
+    penalty_hindsight_data(ϕ, fixed, moving) → scalar
+
+Return the data penalty for deformation `ϕ`: the mean-square intensity error
+between `fixed` and `moving` evaluated at the deformed positions `ϕ(x)`,
+averaged over all voxels where both `fixed[x]` and `moving(ϕ(x))` are finite.
+
+`moving` must be an `AbstractInterpolation` (typically also an extrapolation
+returning `NaN` for out-of-bounds coordinates).
+"""
 function penalty_hindsight_data(
         ϕ::InterpolatingDeformation{T, N, A},
         fixed::AbstractArray{T1, N},
@@ -93,6 +195,20 @@ function penalty_hindsight_data(
     return mm / valid
 end
 
+"""
+    penalty_hindsight_data!(g, ϕ, fixed, moving) → scalar
+
+Compute the data penalty for `ϕ` and write its gradient with respect to the
+interpolation coefficients of `ϕ` to `g`. Returns the same scalar value as
+[`penalty_hindsight_data`](@ref RegisterHindsight.penalty_hindsight_data)`(ϕ, fixed, moving)`.
+
+`g` must be allocated as `similar(ϕ.u.itp.coefs)` and is zeroed and written
+in-place. Its element type must be an `SVector` matching the spatial
+dimensionality of `ϕ` (e.g., `SVector{2, Float64}` for 2-D images).
+
+`moving` must be an `AbstractInterpolation` (not merely an extrapolation) so
+that `Interpolations.gradient` can be evaluated on it.
+"""
 # This re-uses the work of computing the weights for both the value and the gradient
 function penalty_hindsight_data!(
         g,
@@ -141,12 +257,17 @@ function penalty_hindsight_data!(
 end
 
 """
-    coefs, wI = prepare_value_axes(ϕ::InterpolatingDeformation)
+    coefs, wis = prepare_value_axes(ϕ::InterpolatingDeformation)
 
-Return the coefficients and `Interpolations.WeightedIndex` values needed for evaluating
-`ϕ` at each position in the range grid. `coefs` is an array and `wI` a tuple, `wI[d]`
-corresponding to axis `d` of the range grid. In particular, at location `I = (I1, ..., In)`
-the value is `coefs[wI[1][I1], ..., wI[n][In]]`.
+Return the interpolation coefficient array `coefs` and a tuple `wis` of
+per-dimension `WeightedIndex` arrays for evaluating `ϕ` at each position in
+its node grid. `wis[d][i]` is the `WeightedIndex` for the `i`-th position
+along dimension `d`.
+
+This is a low-level helper used internally by
+[`penalty_hindsight_data`](@ref RegisterHindsight.penalty_hindsight_data) and
+[`penalty_hindsight_data!`](@ref RegisterHindsight.penalty_hindsight_data!).
+The coefficient-weighted sum at a given node position is computed by `_coefs_at`.
 """
 function prepare_value_axes(ϕ::InterpolatingDeformation)
     itp = ϕ.u.itp
@@ -157,6 +278,16 @@ function prepare_value_axes(ϕ::InterpolatingDeformation)
     return coefficients(itp), wis
 end
 
+"""
+    penalty_hindsight_data(ϕ1, ϕ2, fixed, moving) → (scalar, scalar)
+
+Return the data penalties for two deformations `ϕ1` and `ϕ2` as a tuple
+`(p1, p2)`, evaluated on the same set of voxels. A voxel contributes to both
+penalties only if `moving` returns a finite value at both `ϕ1(x)` and
+`ϕ2(x)`, ensuring the two values are directly comparable.
+
+`ϕ1` and `ϕ2` must have the same `nodes`.
+"""
 # This implementation allows comparing ϕ1 and ϕ2 on equal footing, meaning using the same
 # voxels of the image data. A voxel gets included only if both ϕ1 and ϕ2 are in-bounds.
 # This cannot be guaranteed for the single-ϕ implementation of penalty_hindsight_data.
@@ -193,18 +324,47 @@ function penalty_hindsight_data(
 end
 
 """
-    result = optimize!(ϕ, dp, fixed, moving; stepsize=1, itermax=1000)
+    result = optimize!(ϕ, dp, fixed, moving; stepsize=1.0, itermax=1000)
 
-Improve `ϕ` by minimizing the mean-square error between `fixed[x...]`
-and `moving(ϕ(x)...)`. `dp` is a deformation penalty, e.g.,
-an `AffinePenalty`. `stepsize` specifies the maximum update, in pixels, of
-elements of `ϕ`.
+Minimize the mean-square error between `fixed[x...]` and `moving(ϕ(x)...)` by
+updating `ϕ` in place via gradient descent on the interpolation coefficients.
+`dp` is a deformation penalty (e.g., `AffinePenalty`). `stepsize` is the
+maximum per-iteration update in pixels applied to elements of `ϕ`.
 
-The operation terminates when the step increases the value of the penalty,
-or when more than `itermax` iterations have occurred.
+`moving` may be:
+- an `AbstractExtrapolation` (used directly),
+- an `AbstractInterpolation` (wrapped automatically with `NaN` extrapolation), or
+- a plain `AbstractArray` (interpolated with `BSpline(Linear())` then extrapolated).
 
-Returns a named tuple `(; final, initial)` with the penalty after optimization
-and the penalty before optimization. Tuple destructuring `final, initial = optimize!(...)` also works.
+Terminates when a gradient-descent step would increase the penalty value, or
+after `itermax` iterations.
+
+# Returns
+
+A named tuple `(; final, initial)` where `final` is the penalty after
+optimization and `initial` is the penalty before optimization. Tuple
+destructuring also works: `final, initial = optimize!(...)`.
+
+# Example
+
+```jldoctest
+julia> using RegisterDeformation, RegisterPenalty, Interpolations
+
+julia> fixed = sin.(range(0, stop=4π, length=40));
+
+julia> nodes = (range(1, stop=40, length=5),);
+
+julia> ϕ = interpolate!(GridDeformation(zeros(1, 5), nodes));
+
+julia> ap = AffinePenalty(ϕ.nodes, 0.01);
+
+julia> moving = sin.(range(0.2, stop=4π + 0.2, length=40));
+
+julia> result = RegisterHindsight.optimize!(ϕ, ap, fixed, moving; stepsize=0.1);
+
+julia> result.final < result.initial
+true
+```
 """
 function optimize!(ϕ::InterpolatingDeformation, dp::DeformationPenalty, fixed, moving::AbstractExtrapolation; stepsize = 1.0, itermax = 1000)
     # Optimize the interpolation coefficients, rather than the values

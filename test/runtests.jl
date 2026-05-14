@@ -1,4 +1,5 @@
 using Aqua
+using Documenter
 using ExplicitImports
 using TestImages
 @static((Sys.islinux() || Sys.iswindows()) && using ImageMagick)  # https://github.com/JuliaImages/ImageView.jl/pull/156#issuecomment-418200062
@@ -12,6 +13,11 @@ using Test
 
 if !isdefined(@__MODULE__, :test_hindsight)
     include("utils.jl")
+end
+
+DocMeta.setdocmeta!(RegisterHindsight, :DocTestSetup, :(using RegisterHindsight); recursive = true)
+@testset "Doctests" begin
+    doctest(RegisterHindsight; manual = false)
 end
 
 @testset "Aqua" begin
