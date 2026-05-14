@@ -1,8 +1,16 @@
 module RegisterHindsight
 
-using ImageCore, StaticArrays, OffsetArrays, ProgressMeter
-using Interpolations, RegisterDeformation, RegisterPenalty
+using ImageCore: ImageCore, float64, gray
+using StaticArrays: StaticArrays
+using OffsetArrays: OffsetArrays
+using ProgressMeter: ProgressMeter, ProgressUnknown
+using Interpolations: Interpolations, AbstractExtrapolation, AbstractInterpolation,
+    BSpline, Linear, ScaledInterpolation
+# Interpolations internals needed to manually evaluate weighted interpolation sums;
+# workaround for Interpolations v0.15 removing WeightedArbIndex as a direct array index.
 using Interpolations: tcollect, itpflag, value_weights, coefficients, indextuple, weights
+using RegisterDeformation: RegisterDeformation, GridDeformation, extrapolate, interpolate
+using RegisterPenalty: RegisterPenalty, DeformationPenalty, penalty!
 
 # optimize! is deliberately unexported because it conflicts with RegisterOptimize.optimize!
 

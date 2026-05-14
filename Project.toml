@@ -1,7 +1,7 @@
 name = "RegisterHindsight"
 uuid = "73fda715-febb-5522-a0fc-086e91958f61"
-authors = ["Tim Holy <tim.holy@gmail.com>"]
 version = "0.3.0"
+authors = ["Tim Holy <tim.holy@gmail.com>"]
 
 [deps]
 ImageCore = "a09fc81d-aa75-5fe9-8630-4744c3626534"
@@ -14,15 +14,16 @@ StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 
 [compat]
 Aqua = "0.8"
+ExplicitImports = "1"
 ForwardDiff = "0.10, 1"
 ImageCore = "0.8.1, 0.9, 0.10"
 ImageMagick = "1"
 Interpolations = "0.15, 0.16"
 OffsetArrays = "0.10, 0.11, 1"
 ProgressMeter = "0.7, 0.8, 0.9, 1"
+Random = "1"
 RegisterCore = "1"
 RegisterDeformation = "1"
-Random = "1"
 RegisterMismatch = "1"
 RegisterPenalty = "1"
 StaticArrays = "0.10, 0.11, 0.12, 1"
@@ -32,6 +33,7 @@ julia = "1.10"
 
 [extras]
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
+ExplicitImports = "7d51a73a-1435-4ff3-83d9-f097790105c7"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 ImageMagick = "6218d12a-5da1-5696-b52f-db25d2ecc6d1"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
@@ -41,4 +43,4 @@ Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 TestImages = "5e47fb64-e119-507b-a336-dd2b206d9990"
 
 [targets]
-test = ["Aqua", "Test", "ForwardDiff", "ImageMagick", "Random", "RegisterCore", "RegisterMismatch", "TestImages"]
+test = ["Aqua", "ExplicitImports", "Test", "ForwardDiff", "ImageMagick", "Random", "RegisterCore", "RegisterMismatch", "TestImages"]
